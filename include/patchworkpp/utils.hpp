@@ -1,17 +1,13 @@
-#ifndef COMMON_H
-#define COMMON_H
-
 #include "math.h"
 #include <sstream>
 #include <vector>
 #include <map>
 #include <iostream>
-
-#include <tf/tf.h>
+#include <fstream>
 
 #include <pcl/common/common.h>
 #include <pcl/common/transforms.h>
-#include <pcl_ros/point_cloud.h>
+#include <pcl/point_cloud.h>
 #include <pcl/filters/filter.h>
 #include <pcl/point_types.h>
 #include <pcl/common/centroid.h>
@@ -22,10 +18,8 @@
 #include <pcl/filters/extract_indices.h>
 #include <pcl/io/pcd_io.h>
 
-#include <fstream>
 // CLASSES
 #define SENSOR_HEIGHT 1.73
-
 #define UNLABELED 0
 #define OUTLIER 1
 #define NUM_ALL_CLASSES 34
@@ -361,6 +355,3 @@ void pc2pcdfile(const pcl::PointCloud<PointXYZILID>& TP, const pcl::PointCloud<P
   pcl::io::savePCDFileASCII(pcd_filename, pc_out);
 
 }
-
-
-#endif

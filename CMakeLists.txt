@@ -1,19 +1,18 @@
-option(BUILD_JSK_PKGS "Enable building of required components of jsk_recognition_msgs and jsk_rviz_plugins" ON)
-
-if(BUILD_JSK_PKGS)
-    add_subdirectory(include/jsk_recognition_msgs)
-#     add_subdirectory(include/jsk_rviz_plugins) #TODO: allow building of rviz plugins as well
-endif()
-
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.5)
 project(patchworkpp)
 
 add_compile_options(-std=c++17)
-set(CMAKE_BUILD_TYPE "Release")
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+
+if( CATKIN_DEVEL_PREFIX OR catkin_FOUND OR CATKIN_BUILD_BINARY_PACKAGE)
+  message(STATUS "------------------------------------------")
+  message(STATUS "patchworkpp is being built using CATKIN.")
+  message(STATUS "------------------------------------------")
+
 
 find_package(catkin REQUIRED COMPONENTS
         roscpp
@@ -87,3 +86,91 @@ install(DIRECTORY include/${PROJECT_NAME}/
 install(DIRECTORY launch config
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
+
+elseif( DEFINED ENV{AMENT_PREFIX_PATH})
+message(STATUS "------------------------------------------")
+message(STATUS "patchworkpp is being built using AMENT.")
+message(STATUS "------------------------------------------")
+
+add_definitions(-DCOMPILED_WITH_AMENT)
+
+if(NOT CMAKE_CXX_STANDARD)
+set(CMAKE_CXX_STANDARD 17)
+endif()
+
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(fpn_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(PCL 1.7 REQUIRED QUIET COMPONENTS common features filters io segmentation surface)
+find_package(pcl_msgs REQUIRED)
+find_package(pcl_ros REQUIRED)
+
+
+set(ament_dependencies
+  rclcpp
+  geometry_msgs
+  tf2_geometry_msgs
+  std_msgs
+  fpn_msgs
+  tf2
+  sensor_msgs
+  tf2_ros
+  pcl_ros
+  pcl_conversions
+)
+
+include_directories(
+  include
+  ${ament_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
+)
+
+
+add_library(patchworkpp SHARED src/patchworkpp_2.cpp)
+ament_target_dependencies(patchworkpp ${ament_dependencies})
+target_link_libraries(patchworkpp ${PCL_LIBRARIES})
+ament_target_dependencies(patchworkpp pcl_conversions)
+
+
+
+add_executable(patchworkpp_2
+  src/patchworkpp_2_node.cpp
+)
+
+ament_target_dependencies(patchworkpp_2 ${ament_dependencies})
+target_link_libraries(patchworkpp_2 patchworkpp ${ament_INCLUDE_DIRS} ${PCL_LIBRARIES})
+
+install(
+  DIRECTORY include/
+  DESTINATION include
+)
+
+
+install(TARGETS patchworkpp_2
+ARCHIVE DESTINATION lib
+LIBRARY DESTINATION lib
+RUNTIME DESTINATION lib/${PROJECT_NAME}
+INCLUDES DESTINATION include
+)
+
+install(
+   DIRECTORY launch rviz
+   DESTINATION share/${PROJECT_NAME}
+ )
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  ament_lint_auto_find_test_dependencies()
+endif()
+
+ament_export_dependencies(rosidl_default_runtime rclcpp)
+ament_export_include_directories(include)
+
+ament_package()
+
+endif()

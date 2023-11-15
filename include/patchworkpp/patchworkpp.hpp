@@ -8,8 +8,6 @@
  * @copyright Copyright (c) 2022
  *
  */
-#ifndef PATCHWORKPP_H
-#define PATCHWORKPP_H
 
 #include <sensor_msgs/PointCloud2.h>
 #include <ros/ros.h>
@@ -1051,4 +1049,3 @@ void PatchWorkpp<PointT>::pc2czm(const pcl::PointCloud<PointT> &src, std::vector
     if (verbose_) cout << "[ CZM ] Divides pointcloud into the concentric zone model" << endl;
 }
 
-#endif
