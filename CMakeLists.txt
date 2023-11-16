@@ -124,6 +124,12 @@ set(ament_dependencies
   pcl_conversions
 )
 
+
+install(
+  DIRECTORY include/
+  DESTINATION include
+)
+
 include_directories(
   include
   ${ament_INCLUDE_DIRS}
@@ -137,6 +143,14 @@ target_link_libraries(patchworkpp ${PCL_LIBRARIES})
 ament_target_dependencies(patchworkpp pcl_conversions)
 
 
+install(
+  TARGETS patchworkpp
+  EXPORT export_${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
 
 add_executable(patchworkpp_2
   src/patchworkpp_2_node.cpp
@@ -144,12 +158,6 @@ add_executable(patchworkpp_2
 
 ament_target_dependencies(patchworkpp_2 ${ament_dependencies})
 target_link_libraries(patchworkpp_2 patchworkpp ${ament_INCLUDE_DIRS} ${PCL_LIBRARIES})
-
-install(
-  DIRECTORY include/
-  DESTINATION include
-)
-
 
 install(TARGETS patchworkpp_2
 ARCHIVE DESTINATION lib
@@ -159,7 +167,7 @@ INCLUDES DESTINATION include
 )
 
 install(
-   DIRECTORY launch rviz
+   DIRECTORY launch rviz config
    DESTINATION share/${PROJECT_NAME}
  )
 
@@ -170,6 +178,9 @@ endif()
 
 ament_export_dependencies(rosidl_default_runtime rclcpp)
 ament_export_include_directories(include)
+ament_export_targets(export_${PROJECT_NAME})
+ament_export_libraries(patchworkpp)
+
 
 ament_package()
 

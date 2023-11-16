@@ -4,12 +4,18 @@ using namespace std;
 
 PatchWorkPPNode::PatchWorkPPNode() : Node("patchworkpp_2_node")
 {
-    this->init_params();
+    RCLCPP_INFO(this->get_logger(), "Node initialising!");
+    init_params();
     patchworkpp_ = std::make_shared<PatchWorkPP>(params_);
+    init_publishers();
+    init_subscribers();
+
+    RCLCPP_INFO(this->get_logger(), "Node initialised!");
 }
 
 void PatchWorkPPNode::init_params()
 {
+    RCLCPP_WARN(this->get_logger(), "Params initialising!");
     this->declare_parameter("verbose", false);
     this->declare_parameter("sensor_height", 1.723);
     this->declare_parameter("num_iter", 3);
@@ -30,13 +36,19 @@ void PatchWorkPPNode::init_params()
     this->declare_parameter("enable_RVPF", true);
     this->declare_parameter("enable_TGR", true);
 
+    RCLCPP_WARN(this->get_logger(), "Declaring params before nested ones");
+
     this->declare_parameter("czm.num_zones", 4);
     this->declare_parameter("czm.num_sectors_each_zone", vector<int>{16, 32, 54, 32});
     this->declare_parameter("czm.num_rings_each_zone", vector<int>{2, 4, 4, 4});
     this->declare_parameter("czm.elevation_thresholds", vector<double>{0.0, 0.0, 0.0, 0.0});
     this->declare_parameter("czm.flatness_thresholds", vector<double>{0.0, 0.0, 0.0, 0.0});
 
+    RCLCPP_WARN(this->get_logger(), "Declaring nested params ones");
     this->declare_parameter("visualize", true);
+
+    this->declare_parameter("cloud_topic", "/ouster/cloud");
+    this->declare_parameter("frame_id", "");
 
     this->get_parameter("verbose", params_.verbose);
     this->get_parameter("sensor_height", params_.sensor_height);
@@ -58,6 +70,9 @@ void PatchWorkPPNode::init_params()
     this->get_parameter("enable_RNR", params_.enable_RNR);
     this->get_parameter("enable_RVPF", params_.enable_RVPF);
     this->get_parameter("enable_TGR", params_.enable_TGR);
+
+    RCLCPP_WARN(this->get_logger(), "Getting params before nested ones");
+
     
     this->get_parameter("czm.num_zones", params_.num_zones);
 
@@ -71,6 +86,9 @@ void PatchWorkPPNode::init_params()
     this->get_parameter("czm.elevation_thresholds", elevation_thr_param);
     this->get_parameter("czm.flatness_thresholds", flatness_thr_param);
 
+    RCLCPP_WARN(this->get_logger(), "Getting nested params ");
+    this->get_parameter("cloud_topic", cloud_topic_);
+    this->get_parameter("frame_id", frame_id_);
 
     params_.num_sectors_each_zone = num_sectors_each_zone_param.as_integer_array();
     params_.num_rings_each_zone = num_rings_each_zone_param.as_integer_array();
@@ -79,8 +97,12 @@ void PatchWorkPPNode::init_params()
 
     this->get_parameter("visualise", params_.visualise);
 
-    poly_list_.header.frame_id = "map";
-    poly_list_.polygons.reserve(patchworkpp_->num_polygons);
+    // RCLCPP_WARN(this->get_logger(), "Getting polylist headers");
+    // poly_list_.header.frame_id = "map";
+    // poly_list_.polygons.reserve(patchworkpp_->num_polygons);
+    // RCLCPP_WARN(this->get_logger(), "Got polylist headers");
+
+    RCLCPP_WARN(this->get_logger(), "initialised params!");
 }
 
 void PatchWorkPPNode::init_publishers()
@@ -91,7 +113,47 @@ void PatchWorkPPNode::init_publishers()
     pub_normal_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("normals", 100);
     pub_noise_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("noise", 100);
     pub_vertical_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("vertical", 100);
+    pub_cloud_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud", 100);
+    pub_ground_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("ground_cloud", 100);
+    pub_non_ground_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("non_ground_cloud", 100);
     
+}
+
+void PatchWorkPPNode::init_subscribers()
+{
+    auto qos = rclcpp::QoS(rclcpp::KeepLast(10));
+    qos.best_effort();
+    qos.durability_volatile();
+
+    sub_cloud_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(cloud_topic_, qos, std::bind(&PatchWorkPPNode::cloud_cb, this, std::placeholders::_1));
+}
+
+void PatchWorkPPNode::cloud_cb(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+{
+    double time_taken;
+
+    pcl::PointCloud<PointT> pc_curr;
+    pcl::PointCloud<PointT> pc_ground;
+    pcl::PointCloud<PointT> pc_non_ground;
+
+    pcl::fromROSMsg(*msg, pc_curr);
+
+    this->estimate_ground(pc_curr, pc_ground, pc_non_ground, time_taken);
+
+    pub_cloud_->publish(this->cloud2msg(pc_curr, msg->header.stamp, msg->header.frame_id));
+    pub_ground_->publish(this->cloud2msg(pc_ground, msg->header.stamp, msg->header.frame_id));
+    pub_cloud_->publish(this->cloud2msg(pc_non_ground, msg->header.stamp, msg->header.frame_id));
+}
+
+sensor_msgs::msg::PointCloud2 PatchWorkPPNode::cloud2msg(pcl::PointCloud<PointT> cloud, const rclcpp::Time& stamp, std::string frame_id)
+{
+    sensor_msgs::msg::PointCloud2 cloud_ROS;
+
+    pcl::toROSMsg(cloud, cloud_ROS);
+    cloud_ROS.header.stamp = stamp;
+    cloud_ROS.header.frame_id = frame_id;
+
+    return cloud_ROS;
 }
 
 geometry_msgs::msg::PolygonStamped PatchWorkPPNode::set_polygons(int zone_idx, int r_idx, int theta_idx, int num_split)
@@ -343,27 +405,27 @@ void PatchWorkPPNode::visualise()
     sensor_msgs::msg::PointCloud2 cloud_ROS;
     pcl::toROSMsg(patchworkpp_->revert_pc_, cloud_ROS);
     cloud_ROS.header.stamp = this->get_clock()->now();
-    cloud_ROS.header.frame_id = "map";
+    cloud_ROS.header.frame_id = frame_id_;
     pub_revert_pc_->publish(cloud_ROS);
 
     pcl::toROSMsg(patchworkpp_->reject_pc_, cloud_ROS);
     cloud_ROS.header.stamp = this->get_clock()->now();
-    cloud_ROS.header.frame_id = "map";
+    cloud_ROS.header.frame_id = frame_id_;
     pub_reject_pc_->publish(cloud_ROS);
 
     pcl::toROSMsg(patchworkpp_->normals_, cloud_ROS);
     cloud_ROS.header.stamp = this->get_clock()->now();
-    cloud_ROS.header.frame_id = "map";
+    cloud_ROS.header.frame_id = frame_id_;
     pub_normal_->publish(cloud_ROS);
 
     pcl::toROSMsg(patchworkpp_->noise_pc_, cloud_ROS);
     cloud_ROS.header.stamp = this->get_clock()->now();
-    cloud_ROS.header.frame_id = "map";
+    cloud_ROS.header.frame_id = frame_id_;
     pub_noise_->publish(cloud_ROS);
 
     pcl::toROSMsg(patchworkpp_->vertical_pc_, cloud_ROS);
     cloud_ROS.header.stamp = this->get_clock()->now();
-    cloud_ROS.header.frame_id = "map";
+    cloud_ROS.header.frame_id = frame_id_;
     pub_vertical_->publish(cloud_ROS);
 
     pub_plane_viz_->publish(poly_list_);
