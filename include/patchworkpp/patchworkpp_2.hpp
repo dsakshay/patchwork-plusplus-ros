@@ -5,6 +5,9 @@
 #include <mutex>
 #include <algorithm>
 
+#include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
+
 #include "patchworkpp/utils.hpp"
 
 #define MARKER_Z_VALUE -2.2
@@ -113,6 +116,11 @@ class PatchWorkPP
         void update_flatness_thr();
 		
         double get_likelihood();
+        
+        // CZM - Concentric Zone Model
+        void flush_patches(vector<Zone> &czm);
+
+        void pc2czm(const pcl::PointCloud<PointT> &src, vector<Zone> &czm, pcl::PointCloud<PointT> &cloud_nonground);
 		
 		bool visualise_from_node = false;
 
@@ -139,10 +147,6 @@ class PatchWorkPP
 
         void flush_patches_in_zone(Zone &patches, int num_sectors, int num_rings);
         
-        // CZM - Concentric Zone Model
-        void flush_patches(vector<Zone> &czm);
-
-        void pc2czm(const pcl::PointCloud<PointT> &src, vector<Zone> &czm, pcl::PointCloud<PointT> &cloud_nonground);
 
         void calc_mean_stdev(std::vector<double> vec, double &mean, double &stdev);
 

@@ -17,6 +17,8 @@
 
 using namespace std;
 
+typedef pcl::PointXYZI PointT;
+
 class PatchWorkPPNode : public rclcpp::Node
 {
 public:
@@ -34,6 +36,9 @@ public:
     sensor_msgs::msg::PointCloud2 cloud2msg(pcl::PointCloud<PointT> cloud, const rclcpp::Time& stamp, std::string frame_id);
 
     void cloud_cb(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+    // pcl::PointCloud<PointT> from_ros_msg(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+
+    void run();
 
 
 private:
@@ -44,6 +49,14 @@ private:
     std::string frame_id_;
 
     fpn_msgs::msg::PolygonArray poly_list_;
+
+    pcl::PointCloud<PointT> pc_curr_;
+    pcl::PointCloud<PointT> pc_ground_;
+    pcl::PointCloud<PointT> pc_non_ground_;
+
+    bool rec_cloud_in_ = false;
+    double time_taken_;
+
 
     rclcpp::Publisher<fpn_msgs::msg::PolygonArray>::SharedPtr pub_plane_viz_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_revert_pc_;

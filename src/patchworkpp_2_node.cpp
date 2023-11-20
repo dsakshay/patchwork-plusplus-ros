@@ -4,13 +4,16 @@ using namespace std;
 
 PatchWorkPPNode::PatchWorkPPNode() : Node("patchworkpp_2_node")
 {
-    RCLCPP_INFO(this->get_logger(), "Node initialising!");
+    RCLCPP_WARN(this->get_logger(), "Node initialising!");
     init_params();
     patchworkpp_ = std::make_shared<PatchWorkPP>(params_);
+
+    poly_list_.header.frame_id = "os_sensor";
+    poly_list_.polygons.reserve(patchworkpp_->num_polygons);
     init_publishers();
     init_subscribers();
 
-    RCLCPP_INFO(this->get_logger(), "Node initialised!");
+    RCLCPP_WARN(this->get_logger(), "Node initialised!");
 }
 
 void PatchWorkPPNode::init_params()
@@ -130,19 +133,67 @@ void PatchWorkPPNode::init_subscribers()
 
 void PatchWorkPPNode::cloud_cb(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
 {
-    double time_taken;
+    RCLCPP_WARN(this->get_logger(), "converting ros pc to pcl pc");
+    pcl::fromROSMsg(*msg, pc_curr_);
+    // pc_curr_ = from_ros_msg(msg);
+    RCLCPP_WARN(this->get_logger(), "converted ros pc to pcl pc");
+    rec_cloud_in_ = true;
 
-    pcl::PointCloud<PointT> pc_curr;
-    pcl::PointCloud<PointT> pc_ground;
-    pcl::PointCloud<PointT> pc_non_ground;
+}
 
-    pcl::fromROSMsg(*msg, pc_curr);
+// pcl::PointCloud<PointT> PatchWorkPPNode::from_ros_msg(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+// {
+//     pcl::PointCloud<pcl::PointXYZI> cloud;
 
-    this->estimate_ground(pc_curr, pc_ground, pc_non_ground, time_taken);
+//     // Get the field structure of this point cloud
+//     int pointBytes = msg->point_step;
+//     u_int32_t offset_x;
+//     u_int32_t offset_y;
+//     u_int32_t offset_z;
+//     u_int32_t offset_int;
+//     for (int f=0; f<msg->fields.size(); ++f)
+//     {
+//     if (msg->fields[f].name == "x")
+//         offset_x = msg->fields[f].offset;
+//     if (msg->fields[f].name == "y")
+//         offset_y = msg->fields[f].offset;
+//     if (msg->fields[f].name == "z")
+//         offset_z = msg->fields[f].offset;
+//     if (msg->fields[f].name == "intensity")
+//         offset_int = msg->fields[f].offset;
+//     }
 
-    pub_cloud_->publish(this->cloud2msg(pc_curr, msg->header.stamp, msg->header.frame_id));
-    pub_ground_->publish(this->cloud2msg(pc_ground, msg->header.stamp, msg->header.frame_id));
-    pub_cloud_->publish(this->cloud2msg(pc_non_ground, msg->header.stamp, msg->header.frame_id));
+//     // populate point cloud object
+//     for (int p=0; p<msg->width; ++p)
+//     {
+//         pcl::PointXYZI newPoint;
+
+//         newPoint.x = *(u_int32_t*)(msg->data[0] + (pointBytes*p) + offset_x);
+//         newPoint.y = *(u_int32_t*)(msg->data[0] + (pointBytes*p) + offset_y);
+//         newPoint.z = *(u_int32_t*)(msg->data[0] + (pointBytes*p) + offset_z);
+//         newPoint.intensity = *(u_int32_t*)(msg->data[0] + (pointBytes*p) + offset_int);
+
+//         cloud.points.push_back(newPoint);
+//     }
+
+//     return cloud;
+
+// }
+
+void PatchWorkPPNode::run()
+{
+    if (rec_cloud_in_)
+    {
+        this->estimate_ground(pc_curr_, pc_ground_, pc_non_ground_, time_taken_);
+
+        RCLCPP_WARN_STREAM(this->get_logger(),"\033[1;32m" << "Input PointCloud: " << pc_curr_.size() << " -> Ground: " << pc_ground_.size() <<  "/ NonGround: " << pc_non_ground_.size()
+            << " (running_time: " << time_taken_ << " sec)" << "\033[0m");
+
+        pub_cloud_->publish(this->cloud2msg(pc_curr_, this->get_clock()->now(), frame_id_));
+        pub_ground_->publish(this->cloud2msg(pc_ground_, this->get_clock()->now(), frame_id_));
+        pub_non_ground_->publish(this->cloud2msg(pc_non_ground_, this->get_clock()->now(), frame_id_));
+    }
+    rec_cloud_in_ = false;
 }
 
 sensor_msgs::msg::PointCloud2 PatchWorkPPNode::cloud2msg(pcl::PointCloud<PointT> cloud, const rclcpp::Time& stamp, std::string frame_id)
@@ -200,16 +251,21 @@ geometry_msgs::msg::PolygonStamped PatchWorkPPNode::set_polygons(int zone_idx, i
         polygons.polygon.points.push_back(point);
     }
 
+    RCLCPP_WARN(this->get_logger(), "polygons are set!");
+
     return polygons;
 }
 
 void PatchWorkPPNode::estimate_ground(pcl::PointCloud<PointT> cloud_in, pcl::PointCloud<PointT> &cloud_ground, pcl::PointCloud<PointT> &cloud_nonground, double &time_taken)
 {
+    RCLCPP_WARN(this->get_logger(), "Estimating ground!");
     // unique_lock<recursive_mutex> lock(mutex_);
     poly_list_.header.stamp = this->get_clock()->now();
     poly_list_.header.frame_id = cloud_in.header.frame_id;
     if (!poly_list_.polygons.empty()) poly_list_.polygons.clear();
     if (!poly_list_.likelihood.empty()) poly_list_.likelihood.clear();
+
+    RCLCPP_WARN(this->get_logger(), "Polygon list initialised!");
 
     static double start, t0, t1, t2, end;
 
@@ -224,19 +280,25 @@ void PatchWorkPPNode::estimate_ground(pcl::PointCloud<PointT> cloud_in, pcl::Poi
     cloud_nonground.clear();
 
     if (params_.enable_RNR) patchworkpp_->reflected_noise_removal(cloud_in, cloud_nonground);
+    RCLCPP_WARN(this->get_logger(), "Patchwork library ran RNR!");
 
     t1 = this->get_clock()->now().seconds();
+
+    patchworkpp_->flush_patches(patchworkpp_->ConcentricZoneModel_);
+    patchworkpp_->pc2czm(cloud_in, patchworkpp_->ConcentricZoneModel_, cloud_nonground);
 
     int concentric_idx = 0;
 
     double t_sort = 0;
 
+    RCLCPP_WARN(this->get_logger(), "getting candidates and ringwise_flatness");
     vector<RevertCandidate> candidates;
     vector<double> ringwise_flatness;
 
     for (int zone_idx = 0; zone_idx < params_.num_zones; ++zone_idx) {
 
         auto zone = patchworkpp_->ConcentricZoneModel_[zone_idx];
+        // RCLCPP_WARN(this->get_logger(), "got zone in for loop");
 
         for (int ring_idx = 0; ring_idx < params_.num_rings_each_zone[zone_idx]; ++ring_idx) {
             for (int sector_idx = 0; sector_idx < params_.num_sectors_each_zone[zone_idx]; ++sector_idx) {
@@ -269,7 +331,7 @@ void PatchWorkPPNode::estimate_ground(pcl::PointCloud<PointT> cloud_in, pcl::Poi
                 const double ground_elevation   = patchworkpp_->pc_mean_(2, 0);
                 const double ground_flatness    = patchworkpp_->singular_values_.minCoeff();
                 const double line_variable      = patchworkpp_->singular_values_(1) != 0 ? patchworkpp_->singular_values_(0)/patchworkpp_->singular_values_(1) : std::numeric_limits<double>::max();
-
+                RCLCPP_WARN(this->get_logger(), "line_variable: %f", line_variable);
                 double heading = 0.0;
                 for(int i=0; i<3; i++) heading += patchworkpp_->pc_mean_(i,0)*patchworkpp_->normal_(i);
 
@@ -287,6 +349,7 @@ void PatchWorkPPNode::estimate_ground(pcl::PointCloud<PointT> cloud_in, pcl::Poi
                     tmp_p.normal_y = patchworkpp_->normal_(1);
                     tmp_p.normal_z = patchworkpp_->normal_(2);
                     patchworkpp_->normals_.points.emplace_back(tmp_p);
+                    RCLCPP_WARN(this->get_logger(), "got temporary point for normals");
                 }
 
                 double t_tmp2 = this->get_clock()->now().seconds();
@@ -389,6 +452,7 @@ void PatchWorkPPNode::estimate_ground(pcl::PointCloud<PointT> cloud_in, pcl::Poi
 
     if (params_.visualise)
     {
+        RCLCPP_WARN(this->get_logger(), "Visualising clouds!");
         this->visualise();
     }
 
@@ -447,8 +511,8 @@ int main(int argc, char** argv) {
     rclcpp::Rate loop_rate(20ms);
     while(rclcpp::ok()) {
         // TODO: implement try-catch here.
-        // RCLCPP_INFO(node->get_logger(), "In while loop!");
-        // node->run();
+        // RCLCPP_WARN(node->get_logger(), "In while loop!");
+        node->run();
         rclcpp::spin_some(node);
 
         loop_rate.sleep();

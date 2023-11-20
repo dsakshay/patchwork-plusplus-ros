@@ -43,7 +43,8 @@ void PatchWorkPP::initialise()
         Zone z;
         initialise_zone(z, params_.num_sectors_each_zone[i], params_.num_rings_each_zone[i]);
         ConcentricZoneModel_.push_back(z);
-    }    
+    }
+    cout << "Initialised patchwork!!" << endl;   
 }
 
 
@@ -96,6 +97,8 @@ void PatchWorkPP::estimate_plane(const pcl::PointCloud<PointT> &ground) {
 
     // according to normal.T*[x,y,z] = -d
     d_ = -(normal_.transpose() * seeds_mean)(0, 0);
+
+    cout << "Estimated plane!" << endl;
 }
 
 
@@ -132,6 +135,7 @@ void PatchWorkPP::extract_initial_seeds(
             init_seeds.points.push_back(p_sorted.points[i]);
         }
     }
+    cout << "Extracted initial seeds" << endl;
 }
 
 
@@ -173,21 +177,28 @@ void PatchWorkPP::extract_initial_seeds(
 
 void PatchWorkPP::reflected_noise_removal(pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointT> &cloud_nonground)
 {
+    cout << "running RNR" << endl;
+    cout << "size of cloud_in: " << cloud_in.size() << endl; 
     for (int i=0; i<cloud_in.size(); i++)
     {
+        // cout << "intensity of cloud_in for i: " << i << "= " << cloud_in[i].intensity << endl;
         double r = sqrt( cloud_in[i].x*cloud_in[i].x + cloud_in[i].y*cloud_in[i].y );
         double z = cloud_in[i].z;
         double ver_angle_in_deg = atan2(z, r)*180/M_PI;
 
-        if ( ver_angle_in_deg < params_.RNR_ver_angle_thr && z < -params_.sensor_height && cloud_in[i].intensity < params_.RNR_intensity_thr)
+        // cout << "in for loop for RNR" << endl;
+
+        if ( ver_angle_in_deg < params_.RNR_ver_angle_thr && z < -params_.sensor_height) // && cloud_in[i].intensity < params_.RNR_intensity_thr)
         {
+            cout <<  "in if condition for noise removal" <<  endl;
             cloud_nonground.push_back(cloud_in[i]);
             noise_pc_.push_back(cloud_in[i]);
             noise_idxs_.push(i);
         }
     }
+    cout << "completed RNR process" << endl;
 
-    if (params_.verbose) cout << "[ RNR ] Num of noises : " << noise_pc_.points.size() << endl;
+    // if (params_.verbose) cout << "[ RNR ] Num of noises : " << noise_pc_.points.size() << endl;
 }
 
 
@@ -208,6 +219,7 @@ void PatchWorkPP::update_elevation_thr(void)
         else params_.elevation_thr[i] = update_mean + 2*update_stdev;
 
         int exceed_num = params_.update_elevation[i].size() - params_.max_elevation_storage;
+        cout << "exceed num in elevation: " << exceed_num << endl;
         if (exceed_num > 0) params_.update_elevation[i].erase(params_.update_elevation[i].begin(), params_.update_elevation[i].begin() + exceed_num);
     }
 
@@ -236,6 +248,7 @@ void PatchWorkPP::update_flatness_thr(void)
         // if (verbose_) { cout << "flatness threshold [" << i << "]: " << flatness_thr_[i] << endl; }
 
         int exceed_num = params_.update_flatness[i].size() - params_.max_flatness_storage;
+        cout << "exceed num in flatness: " << exceed_num << endl;
         if (exceed_num > 0) params_.update_flatness[i].erase(params_.update_flatness[i].begin(), params_.update_flatness[i].begin() + exceed_num);
     }
 
@@ -323,6 +336,7 @@ void PatchWorkPP::extract_piecewiseground(const int zone_idx, const pcl::PointCl
     pcl::PointCloud<PointT> &dst,
     pcl::PointCloud<PointT> &non_ground_dst)
 {
+    cout << "extracting piecewise ground" << endl;
     // 0. Initialization
     if (!ground_pc_.empty()) ground_pc_.clear();
     if (!dst.empty()) dst.clear();
@@ -430,6 +444,7 @@ void PatchWorkPP::set_ground_likelihood_estimation_status(
     } else { // tilted
         likelihood = TOO_TILTED;
     }
+    cout << "set likelihood estimation" << endl;
 }
 
 double PatchWorkPP::get_likelihood()
